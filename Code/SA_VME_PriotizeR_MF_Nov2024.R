@@ -1,8 +1,6 @@
 #Date: 02/11/2024
 #Author: M Franken- Adapted from Dabalà Alvise
 ################################################################################
-pacman::p_load(tidyverse, sf)
-setwd("D:/AAA_PhD/5SA_VME_SCP")
 library(tidyverse)
 library(sf)
 
@@ -56,10 +54,7 @@ PUs_VMEs_Indicator_taxa <- PUs_VMEs_Indicator_taxa %>%
 PUs_VMEs_Indicator_taxa <- PUs_VMEs_Indicator_taxa %>%
   pivot_wider(names_from = "VME_Type", #names of the columns
               values_from = "values",
-              values_fn = sum) %>% #change to wide format
-  rename_with(~paste0(., "_indicator"), #add indicator as a suffix
-              colnames(.)[!grepl("geometry",
-                                 colnames(.))])
+              values_fn = sum) #change to wide format
 #All the columns that are not geometry
 
 print(PUs_VMEs_Indicator_taxa, n = "all")
@@ -83,7 +78,7 @@ targets_VMEs_Indicator_taxa <- tibble(
   target = 0.27
 )
 
-
+dir.create("Outputs/RDS/Targets/", recursive = TRUE)
 saveRDS(targets_VMEs_Indicator_taxa,
         "Outputs/RDS/Targets/targets_VMEs_Indicator_taxa.rds")
 
@@ -165,7 +160,7 @@ targets_PotentialVME_visual_survey <- tibble(
   target = 0.81
 )
 
-saveRDS(targets_VMEs_visual_survey,
+saveRDS(targets_PotentialVME_visual_survey,
         "Outputs/RDS/Targets/targets_PotentialVME_visual_survey.rds")
 
 #########################ADD VME CATCH RECORDS###############################
@@ -280,7 +275,6 @@ PUs_all_features <- future_lapply(name_files, function(name_file) {
 numeric_cols <- sapply(PUs_all_features, is.numeric)
 character_cols <- sapply(PUs_all_features, is.character)
 
-
 #Transform all the NAs to 0
 PUs_all_features <- PUs_all_features %>% 
   mutate(
@@ -288,8 +282,8 @@ PUs_all_features <- PUs_all_features %>%
   )
 
 # Save the updated dataset
-saveRDS(PUs_all_features, "Outputs/RDS/PUs_features/PUs_all_features.rds")
-
+dir.create("Outputs/RDS/PUs_all_features", recursive = TRUE)
+saveRDS(PUs_all_features, "Outputs/RDS/PUs_all_features/PUs_all_features.rds")
 
 #########################STEP 4: COST LAYER###############################
 #Read PUs
@@ -317,10 +311,11 @@ PUs_all_features_cost <- PUs_all_features %>%
 plot(PUs_all_features_cost[, "cost"])
 
 #Save
-saveRDS(PUs_all_features_cost, "Outputs/RDS/PUs_features/PUs_all_features_cost.rds")
+saveRDS(PUs_all_features_cost, "Outputs/RDS/PUs_all_features/PUs_all_features_cost.rds")
 
+dir.create("Outputs/shp/PUs", recursive = TRUE)
 st_write(PUs_all_features_cost, "Outputs/shp/PUs/PUs_all_features_cost.shp",
-         append = FALSE)
+         append = TRUE)
 
 #########################STEP 5: RUN PrioritizeR###############################
 
@@ -332,7 +327,12 @@ library(sf)
 library(future.apply)
 
 # Read PUs
-PUs_all_features_cost <- readRDS("Outputs/RDS/PUs_features/PUs_all_features_cost.rds")
+PUs_all_features_cost <- readRDS("Outputs/RDS/PUs_all_features/PUs_all_features_cost.rds")
+
+# Keep only PUs that have at least one feature
+PUs_all_features_cost_n <- PUs_all_features_cost %>% 
+  mutate(sum = rowSums(across(!c("geometry", "cost")))) %>% 
+  filter(sum > 0)
 
 # Get feature names
 names_features <- PUs_all_features_cost %>%
@@ -343,16 +343,6 @@ names_features <- PUs_all_features_cost %>%
 targets_files_names <- list.files("Outputs/RDS/Targets/", full.names = TRUE) %>%
   lapply(readRDS) %>%
   bind_rows()
-
-# Clean the feature names by removing .x and .y suffixes
-names_features_clean <- names_features %>%
-  str_remove("\\.x$") %>%
-  str_remove("\\.y$")
-
-# Clean the target names similarly
-targets_files_names <- targets_files_names %>%
-  mutate(feature = str_remove(feature, "\\.x$")) %>%
-  mutate(feature = str_remove(feature, "\\.y$"))
 
 # Filter targets to match features exactly and ensure unique entries
 filtered_targets <- targets_files_names %>%
