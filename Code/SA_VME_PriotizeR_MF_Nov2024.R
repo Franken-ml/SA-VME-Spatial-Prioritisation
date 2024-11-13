@@ -1,8 +1,7 @@
 #Date: 02/11/2024
 #Author: M Franken- Adapted from Dabalà Alvise
 ################################################################################
-library(tidyverse)
-library(sf)
+pacman::p_load(tidyverse, sf)
 
 #########################STEP 1: SETTING UP PLANNING UNIT###############################
 #Read EEZ file
@@ -330,9 +329,10 @@ library(future.apply)
 PUs_all_features_cost <- readRDS("Outputs/RDS/PUs_all_features/PUs_all_features_cost.rds")
 
 # Keep only PUs that have at least one feature
-PUs_all_features_cost_n <- PUs_all_features_cost %>% 
+PUs_all_features_cost <- PUs_all_features_cost %>% 
   mutate(sum = rowSums(across(!c("geometry", "cost")))) %>% 
-  filter(sum > 0)
+  filter(sum > 0) %>% 
+  select(!c("sum"))
 
 # Get feature names
 names_features <- PUs_all_features_cost %>%
@@ -370,8 +370,7 @@ problem_01 <- problem(PUs_all_features_cost,
   add_min_set_objective() %>% 
   add_gurobi_solver(gap = 0.1, threads = 4)
 
-solution_01 <- solve(problem_01, force = TRUE)
-plot(solution_01[, "solution_1"])
+solution_01 <- solve(problem_01)
 plot(solution_01[, "solution_1"], main = "solution_01")
 
 #Add boundary penalty
@@ -379,15 +378,15 @@ problem_02 <- problem_01 %>%
   add_boundary_penalties(penalty = 0.01, edge_factor = 0.5)
 #penalty 
 
-solution_02 <- solve(problem_02, force = TRUE)
+solution_02 <- solve(problem_02)
 
 plot(solution_02[, "solution_1"])
 plot(solution_02[, "solution_1"], main = "solution_02")
 
 
 #Create a portfolio of solutions
-problem_03 <- problem_02 %>% 
-  add_gap_portfolio(pool_gap = 0.5, number_solutions = 5)
+problem_03 <- problem_01 %>% 
+  add_gap_portfolio(pool_gap = 0.1, number_solutions = 5)
 
 solution_03 <- solve(problem_03, force = TRUE)
 
@@ -411,5 +410,3 @@ eval_target_coverage_summary(problem_02, solution_02[, "solution_1"]) %>% #targe
 replacemant_score <- eval_replacement_importance(problem_01, 
                                                  solution_01[, "solution_1"], 
                                                  force = TRUE)
-
-
