@@ -7,10 +7,18 @@ pacman::p_load(tidyverse, sf)
 #Read EEZ file
 EEZ_SA <- st_read("Data/EEZ/eez.shp")
 
-#Produce a grid
-grid_PUs <- st_make_grid(EEZ_SA,
-                         cellsize = c(0.1, 0.1)) %>% #cellsize set dimension of the grid
-  st_sf()
+# Produce a grid
+grid_PUs <- st_make_grid(EEZ_SA %>% 
+                           st_transform("+proj=cea +lat_ts=30 +lon_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs"),
+                         cellsize = c(11111, 11111)) %>% #Planning units of ~0.1 degrees at the equator (11111 is m)
+  st_sf() %>% 
+  st_transform("EPSG:4326")
+
+#Check differences in the area between the cells
+grid_PUs_area <- grid_PUs %>% 
+  lwgeom::st_geod_area()
+
+(max(grid_PUs_area) - min(grid_PUs_area))/max(grid_PUs_area)
 
 #Plot
 plot(grid_PUs)
@@ -286,7 +294,7 @@ saveRDS(PUs_all_features, "Outputs/RDS/PUs_all_features/PUs_all_features.rds")
 
 #########################STEP 4: COST LAYER###############################
 #Read PUs
-PUs_all_features <- readRDS("Outputs/RDS/PUs/PUs_all_features.rds")
+PUs_all_features <- readRDS("Outputs/RDS/PUs_all_features/PUs_all_features.rds")
 
 #read cost
 cost <- st_read("Data/cost/iAtl_Cost_Kerry.shp")
@@ -384,11 +392,11 @@ plot(solution_02[, "solution_1"])
 plot(solution_02[, "solution_1"], main = "solution_02")
 
 
-#Create a portfolio of solutions
+#Create a portfolio of solutions (without boundary penalties included)
 problem_03 <- problem_01 %>% 
   add_gap_portfolio(pool_gap = 0.1, number_solutions = 5)
 
-solution_03 <- solve(problem_03, force = TRUE)
+solution_03 <- solve(problem_03)
 
 plot(solution_03[, c("solution_1", "solution_2",
                      "solution_3", "solution_4", 
@@ -408,5 +416,4 @@ eval_target_coverage_summary(problem_02, solution_02[, "solution_1"]) %>% #targe
 
 #Calculate replacement score
 replacemant_score <- eval_replacement_importance(problem_01, 
-                                                 solution_01[, "solution_1"], 
-                                                 force = TRUE)
+                                                 solution_01[, "solution_1"])
