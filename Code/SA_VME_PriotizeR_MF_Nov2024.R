@@ -89,7 +89,6 @@ dir.create("Outputs/RDS/Targets/", recursive = TRUE)
 saveRDS(targets_VMEs_Indicator_taxa,
         "Outputs/RDS/Targets/targets_VMEs_Indicator_taxa.rds")
 
-
 #########################ADD VME VISUAL RECORDS###############################
 VMEs_visual_survey <- st_read("Data/VMEs/VME_Visual_Record.shp")
 
@@ -212,54 +211,48 @@ targets_VMEs_catch <- tibble(
 saveRDS(targets_VMEs_catch,
         "Outputs/RDS/Targets/targets_VMEs_catch.rds")
 
-
-
 #########################ADD VME SONAR RECORDS###############################
-#EXLUDE FOR NOW#
-#VMEs_sonar <- st_read("Data/VMEs/Coral_Mounds.shp")
+VMEs_sonar <- st_read("Data/VMEs/Coral_Mounds.shp")
 
 #Read PUs
-#PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
 
 #Intersect with the PUs
-#PUs_VMEs_sonar <- PUs %>%
-#  st_join(VMEs_sonar) %>%
-#  dplyr::select(Feature) %>%
-#  filter(!is.na(Feature))
+PUs_VMEs_sonar <- PUs %>%
+  st_join(VMEs_sonar) %>%
+  dplyr::select(Feature) %>%
+  filter(!is.na(Feature))
 
 #Create a column of presence-absence
-#PUs_VMEs_sonar <- PUs_VMEs_sonar %>%
-#  mutate(values = 1)
+PUs_VMEs_sonar <- PUs_VMEs_sonar %>%
+  mutate(values = 1)
 
 #Report that in wider tibble
-#PUs_VMEs_sonar <- PUs_VMEs_sonar %>%
-#  pivot_wider(names_from = "Feature",
-#              values_from = "values", values_fn = sum)
+PUs_VMEs_sonar <- PUs_VMEs_sonar %>%
+  pivot_wider(names_from = "Feature",
+              values_from = "values", values_fn = sum)
 
-#saveRDS(PUs_VMEs_sonar, "Outputs/RDS/PUs_features/PUs_VMEs_sonar.rds")
+saveRDS(PUs_VMEs_sonar, "Outputs/RDS/PUs_features/PUs_VMEs_sonar.rds")
 
-#plot(st_geometry(PUs_VMEs_sonar), main="PUs with VME Sonar")  # Visualization
+plot(st_geometry(PUs_VMEs_sonar), main="PUs with VME Sonar")  # Visualization
+
 # Plot all Planning Units (PUs) with a light fill color
-#ggplot() +
-#  geom_sf(data = PUs, fill = "white", color = "lightgrey", size = 0.2) +  # All PUs in grey
-#  geom_sf(data = PUs_VMEs_sonar, fill = "red", color = "black", size = 0.2) +  # Selected grids in red
-#  labs(title = "Planning Units with VME Sonar") +
-# theme_minimal()
+ggplot() +
+  geom_sf(data = PUs, fill = "white", color = "lightgrey", size = 0.2) +  # All PUs in grey
+  geom_sf(data = PUs_VMEs_sonar, fill = "red", color = "black", size = 0.2) +  # Selected grids in red
+  labs(title = "Planning Units with VME Sonar") +
+  theme_minimal()
 
 #Set targets
-#targets_VMEs_catch <- tibble(
-#  feature = (colnames(PUs_VMEs_sonar) %>%
-#               setdiff("geometry")),
-#  target = 0.81)
+targets_VMEs_catch <- tibble(
+ feature = (colnames(PUs_VMEs_sonar) %>%
+              setdiff("geometry")),
+ target = 0.81)
 
-# saveRDS(targets_VMEs_catch, "Outputs/RDS/Targets/targets_VMEs_sonar.rds")
-
+saveRDS(targets_VMEs_catch, "Outputs/RDS/Targets/targets_VMEs_sonar.rds")
 
 #########################STEP 3: GROUP FEATURES###############################
-
-library(sf)
-library(dplyr)
-library(future.apply)
+pacman::p_load(sf, tidyverse, future.apply)
 
 # Read PUs
 PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
@@ -270,10 +263,10 @@ name_files <- list.files("Outputs/RDS/PUs_features/", pattern = ".rds$", full.na
 # Join all the features in the folder to the PUs
 PUs_all_features <- future_lapply(name_files, function(name_file) {
   PUs_features_tibble <- readRDS(name_file)  # Read the file
-
+  
   # Ensure the spatial extent matches PUs
   PUs_features_tibble <- st_join(PUs, PUs_features_tibble)
-
+  
   return(PUs_features_tibble)
 }) %>%
   dplyr::bind_rows()  # Use dplyr::bind_rows to concatenate the results
@@ -325,13 +318,8 @@ st_write(PUs_all_features_cost, "Outputs/shp/PUs/PUs_all_features_cost.shp",
          append = TRUE)
 
 #########################STEP 5: RUN PrioritizeR###############################
-
 # Load required packages
-library(gurobi)
-library(prioritizr)
-library(tidyverse)
-library(sf)
-library(future.apply)
+pacman::p_load(gurobi, prioritizr, tidyverse, sf, future.apply)
 
 # Read PUs
 PUs_all_features_cost <- readRDS("Outputs/RDS/PUs_all_features/PUs_all_features_cost.rds")
@@ -354,10 +342,10 @@ targets_files_names <- list.files("Outputs/RDS/Targets/", full.names = TRUE) %>%
 
 # Filter targets to match features exactly and ensure unique entries
 filtered_targets <- targets_files_names %>%
-  filter(feature %in% names_features_clean) %>%
+  filter(feature %in% names_features) %>%
   distinct(feature, .keep_all = TRUE) %>%
   # Ensure targets are in the same order as features
-  slice(match(names_features_clean, feature))
+  slice(match(names_features, feature))
 
 # Diagnostic prints
 print(paste("Number of features:", length(names_features)))
@@ -370,27 +358,59 @@ if (length(filtered_targets$target) != length(names_features)) {
                length(filtered_targets$target)))
 }
 
+# Read MPAs and intersect with the planning units
+MPAs <- st_read("Data/MPA.shp")
+
+PUs_all_features_cost <- PUs_all_features_cost %>% 
+  mutate(cellID = row_number(.)) %>% 
+  mutate(cellID = sort(cellID)) 
+
+# Calculate area of MPAs in each PU
+PUs_MPAs_intersection <- PUs_all_features_cost %>%
+  st_intersection(MPAs) %>% 
+  dplyr::mutate(MPAs_Area_km2 = as.numeric(units::set_units(lwgeom::st_geod_area(.), "km2"))) %>%
+  dplyr::group_by(cellID) %>%
+  sf::st_drop_geometry() %>%
+  summarise(MPAs_Area_km2 = sum(MPAs_Area_km2))
+
+# Add information to the PU
+PUs_all_features_cost_MPAs <- PUs_all_features_cost %>%
+  left_join(PUs_MPAs_intersection, by = "cellID")
+
+# Select PU as protected if >= 50% of its area is covered by MPAs
+Area_PUs_km2 <- PUs_all_features_cost_MPAs[1,] %>% 
+  lwgeom::st_geod_area(.) %>% 
+  units::set_units("km2") %>% 
+  as.numeric()
+  
+PUs_all_features_cost_MPAs <- PUs_all_features_cost_MPAs %>% 
+  mutate(protected = case_when(
+    MPAs_Area_km2 >= Area_PUs_km2/2 ~ TRUE,
+    .default = FALSE
+  ))
+
+plot(PUs_all_features_cost_MPAs[, 'protected'])
 
 #Minimum set objective problem
 problem_01 <- problem(PUs_all_features_cost, 
                       features = names_features, cost_column = "cost") %>% 
-  add_relative_targets(filtered_targets$target) %>% 
+  add_relative_targets(filtered_targets$target) %>%
+  add_locked_in_constraints(PUs_all_features_cost_MPAs$protected) %>% #MPAs are locked-in
   add_min_set_objective() %>% 
-  add_gurobi_solver(gap = 0.1, threads = 4)
+  add_gurobi_solver(gap = 0.1, threads = 4) #set the number of threads you want to use
 
 solution_01 <- solve(problem_01)
 plot(solution_01[, "solution_1"], main = "solution_01")
 
 #Add boundary penalty
 problem_02 <- problem_01 %>% 
-  add_boundary_penalties(penalty = 0.01, edge_factor = 0.5)
-#penalty 
+  add_boundary_penalties(penalty = 0.01, edge_factor = 0.5) 
+#Change penalty and edge factor for more or less clumped solutions
 
 solution_02 <- solve(problem_02)
 
 plot(solution_02[, "solution_1"])
 plot(solution_02[, "solution_1"], main = "solution_02")
-
 
 #Create a portfolio of solutions (without boundary penalties included)
 problem_03 <- problem_01 %>% 
