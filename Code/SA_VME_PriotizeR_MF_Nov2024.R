@@ -252,13 +252,20 @@ targets_VMEs_catch <- tibble(
 saveRDS(targets_VMEs_catch, "Outputs/RDS/Targets/targets_VMEs_sonar.rds")
 
 #########################ADD LOPHELIA#########################################
-pacman::p_load(terra, exactextractr)
+pacman::p_load(terra, exactextractr, rnaturalearth, tidyterra)
 
 # read raster
-Desmophyllum <- terra::rast("Data/HSM_Desmophyllum_SWContinental Margin_April2023_Predictions_Franken/LophReef_ModelData.tif") %>% 
-  terra::project("EPSG:4326")
+Desmophyllum <- terra::rast("Data/HSM_Desmophyllum_SWContinental Margin_April2023_Predictions_Franken/LophReef_ModelData_WGS84.tif") 
 
-plot(Desmophyllum) 
+SA_sf <- rnaturalearth::ne_countries(country = "South Africa")
+
+# Plot all Planning Units (PUs) with a light fill color
+ggplot() +
+  geom_sf(data = SA_sf, fill = "transparent", color = "grey25", size = 0.2) +  # All PUs in grey
+  geom_spatraster(data = Desmophyllum, na.rm = TRUE) +  # Selected grids in red
+  scale_fill_continuous(na.value = NA) +
+  labs(title = "Planning Units with VME Sonar") +
+  theme_bw()
 
 # Extract values to the PUs
 PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
@@ -270,7 +277,7 @@ PUs_Desmophyllum <- PUs %>%
                                            fun = 'max' #maximum value that intersect the PU
                                            )) %>% 
   mutate(presence_Desmophyllum = case_when(
-    prob_Desmophyllum > 0.5 ~ 1, #Threshold to define presence or absence (at the moment 0.5)
+    prob_Desmophyllum > 0.4 ~ 1, #Threshold to define presence or absence (at the moment 0.5)
     .default = 0
   )) %>% 
   dplyr::select(presence_Desmophyllum)
