@@ -267,10 +267,10 @@ PUs_Desmophyllum <- PUs %>%
   mutate(prob_Desmophyllum = exact_extract(Desmophyllum, 
                                            PUs, 
                                            include_area = FALSE, 
-                                           fun = 'weighted_mean', #weighted mean of the value of probability of presence in each PU
-                                           weights = 'area')) %>% 
+                                           fun = 'max' #maximum value that intersect the PU
+                                           )) %>% 
   mutate(presence_Desmophyllum = case_when(
-    prob_Desmophyllum > 0.2 ~ 1, #Threshold to define presence or absence (at the moment 0.2)
+    prob_Desmophyllum > 0.5 ~ 1, #Threshold to define presence or absence (at the moment 0.5)
     .default = 0
   )) %>% 
   dplyr::select(presence_Desmophyllum)
