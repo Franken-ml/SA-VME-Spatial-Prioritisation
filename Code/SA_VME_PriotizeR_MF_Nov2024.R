@@ -245,11 +245,48 @@ ggplot() +
 
 #Set targets
 targets_VMEs_catch <- tibble(
- feature = (colnames(PUs_VMEs_sonar) %>%
-              setdiff("geometry")),
- target = 0.81)
+  feature = (colnames(PUs_VMEs_sonar) %>%
+               setdiff("geometry")),
+  target = 0.81)
 
 saveRDS(targets_VMEs_catch, "Outputs/RDS/Targets/targets_VMEs_sonar.rds")
+
+#########################ADD LOPHELIA#########################################
+pacman::p_load(terra, exactextractr)
+
+# read raster
+Desmophyllum <- terra::rast("Data/HSM_Desmophyllum_SWContinental Margin_April2023_Predictions_Franken/LophReef_ModelData.tif") %>% 
+  terra::project("EPSG:4326")
+
+plot(Desmophyllum) 
+
+# Extract values to the PUs
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+
+PUs_Desmophyllum <- PUs %>%
+  mutate(prob_Desmophyllum = exact_extract(Desmophyllum, 
+                                           PUs, 
+                                           include_area = FALSE, 
+                                           fun = 'weighted_mean', #weighted mean of the value of probability of presence in each PU
+                                           weights = 'area')) %>% 
+  mutate(presence_Desmophyllum = case_when(
+    prob_Desmophyllum > 0.2 ~ 1, #Threshold to define presence or absence (at the moment 0.2)
+    .default = 0
+  )) %>% 
+  dplyr::select(presence_Desmophyllum)
+
+plot(PUs_Desmophyllum[, "presence_Desmophyllum"])
+
+# Save
+saveRDS(PUs_Desmophyllum, "Outputs/RDS/PUs_features/PUs_Desmophyllum.rds")
+
+# Set targets
+targets_Desmophyllum <- tibble(
+  feature = (colnames(PUs_Desmophyllum) %>%
+               setdiff("geometry")),
+  target = 0.81)
+
+saveRDS(targets_Desmophyllum, "Outputs/RDS/Targets/targets_Desmophyllum.rds")
 
 #########################STEP 3: GROUP FEATURES###############################
 pacman::p_load(sf, tidyverse, future.apply)
@@ -382,7 +419,7 @@ Area_PUs_km2 <- PUs_all_features_cost_MPAs[1,] %>%
   lwgeom::st_geod_area(.) %>% 
   units::set_units("km2") %>% 
   as.numeric()
-  
+
 PUs_all_features_cost_MPAs <- PUs_all_features_cost_MPAs %>% 
   mutate(protected = case_when(
     MPAs_Area_km2 >= Area_PUs_km2/2 ~ TRUE,
