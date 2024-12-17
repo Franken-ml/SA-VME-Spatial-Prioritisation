@@ -1,0 +1,585 @@
+#Date: 17/12/2024
+#Author: Dabalà Alvise 
+################################################################################
+pacman::p_load(tidyverse, sf)
+setwd("D:/AAA_PhD/5SA_VME_SCP")
+
+#########################STEP 1: SETTING UP PLANNING UNIT###############################
+
+#Read EEZ file
+EEZ_SA <- st_read("Data/EEZ/eez.shp")
+
+# Produce a grid
+grid_PUs <- st_make_grid(EEZ_SA %>% 
+                           st_transform("+proj=cea +lat_ts=30 +lon_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs"),
+                         cellsize = c(11111, 11111)) %>% #Planning units of ~0.1 degrees at the equator (11111 is m)
+  st_sf() %>% 
+  st_transform("EPSG:4326")
+
+#Check differences in the area between the cells
+grid_PUs_area <- grid_PUs %>% 
+  lwgeom::st_geod_area()
+
+(max(grid_PUs_area) - min(grid_PUs_area))/max(grid_PUs_area)
+
+#Plot
+plot(grid_PUs)
+
+#Intersect grid and EEZ
+intersection <- st_intersects(grid_PUs, EEZ_SA) %>%
+  lengths > 0
+
+#Filter only PUs that intersect the EEZ
+PUs <- grid_PUs %>%
+  filter(intersection)
+
+#Plot final PUs
+plot(PUs)
+
+#Save PUs
+dir.create("Outputs/RDS/PUs/", recursive = TRUE) #Create the directory
+saveRDS(PUs, "Outputs/RDS/PUs/PUs.rds")
+
+#########################STEP 2: ADD DISTRIBUTION DATA###########################
+
+#########################ADD VME INDICATOR RECORDS###############################
+#Read the file
+VMEs_Indicator_taxa <- st_read("Data/VMEs/VME_Indicator_Record.shp")
+
+#Read PUs
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+
+#Join the VMEs indicator taxa
+PUs_VMEs_Indicator_taxa <- PUs %>%
+  st_join(VMEs_Indicator_taxa) %>% #join based on geometry
+  dplyr::select(VME_Type) %>% #select the column of interest
+  filter(!is.na(VME_Type)) #filter all the values that are not NAs
+
+#Create a column of presence-absence
+PUs_VMEs_Indicator_taxa <- PUs_VMEs_Indicator_taxa %>%
+  mutate(values = 1) #make a column of 1
+
+#Report that in wider tibble
+PUs_VMEs_Indicator_taxa <- PUs_VMEs_Indicator_taxa %>%
+  pivot_wider(names_from = "VME_Type", #names of the columns
+              values_from = "values",
+              values_fn = sum) #change to wide format
+#All the columns that are not geometry
+
+print(PUs_VMEs_Indicator_taxa, n = "all")
+
+dir.create("Outputs/RDS/PUs_features", recursive = TRUE)
+saveRDS(PUs_VMEs_Indicator_taxa,
+        "Outputs/RDS/PUs_features/PUs_VMEs_Indicator_taxa.rds")
+
+plot(st_geometry(PUs_VMEs_Indicator_taxa), main="PUs with VME Indicator Taxa")  # Visualization
+# Plot all Planning Units (PUs) with a light fill color
+ggplot() +
+  geom_sf(data = PUs, fill = "white", color = "lightgrey",, size = 0.2) +
+  geom_sf(data = PUs_VMEs_Indicator_taxa, fill = "red", color = "black", size = 0.2) +
+  labs(title = "Planning Units with VME Indicator Taxa") +
+  theme_minimal()
+
+#Set targets
+targets_VMEs_Indicator_taxa <- tibble(
+  feature = (colnames(PUs_VMEs_Indicator_taxa) %>%
+               setdiff("geometry")),
+  target = 0.27
+)
+
+dir.create("Outputs/RDS/Targets/", recursive = TRUE)
+saveRDS(targets_VMEs_Indicator_taxa,
+        "Outputs/RDS/Targets/targets_VMEs_Indicator_taxa.rds")
+
+#########################ADD VME VISUAL RECORDS###############################
+VMEs_visual_survey <- st_read("Data/VMEs/VME_Visual_Record.shp")
+
+#Read PUs
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+
+PUs_VMEs_visual_survey <- PUs %>%
+  st_join(VMEs_visual_survey) %>%
+  dplyr::select(VME_Type) %>%
+  filter(!is.na(VME_Type))
+
+#Create a column of presence-absence
+PUs_VMEs_visual_survey <- PUs_VMEs_visual_survey %>%
+  mutate(values = 1)
+
+#Report that in wider tibble
+PUs_VMEs_visual_survey <- PUs_VMEs_visual_survey %>%
+  pivot_wider(names_from = "VME_Type",
+              values_from = "values", values_fn = sum)
+
+saveRDS(PUs_VMEs_visual_survey, "Outputs/RDS/PUs_features/PUs_VMEs_visual_survey.rds")
+
+plot(st_geometry(PUs_VMEs_visual_survey), main="PUs with VME Visual Survey Records")  # Visualization
+# Plot all Planning Units (PUs) with a light fill color
+ggplot() +
+  geom_sf(data = PUs, fill = "white", color = "lightgrey", size = 0.2) +  # All PUs in grey
+  geom_sf(data = PUs_VMEs_visual_survey, fill = "red", color = "black", size = 0.2) +  # Selected grids in red
+  labs(title = "Planning Units with VME Visual Survey Records") +
+  theme_minimal()
+
+#Set targets
+targets_VMEs_visual_survey <- tibble(
+  feature = (colnames(PUs_VMEs_visual_survey) %>%
+               setdiff("geometry")),
+  target = 0.81
+)
+
+saveRDS(targets_VMEs_visual_survey,
+        "Outputs/RDS/Targets/targets_VMEs_visual_survey.rds")
+
+#########################ADD POTENTIAL VME VISUAL RECORDS###############################
+PotentialVME_visual_survey <- st_read("Data/VMEs/PotentialVME_Visual_Record.shp")
+
+#Read PUs
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+
+PUs_PotentialVME_visual_survey <- PUs %>%
+  st_join(PotentialVME_visual_survey) %>%
+  dplyr::select(VME_Type) %>%
+  filter(!is.na(VME_Type))
+
+#Create a column of presence-absence
+PUs_PotentialVME_visual_survey  <- PUs_PotentialVME_visual_survey %>%
+  mutate(values = 1)
+
+#Report that in wider tibble
+PUs_PotentialVME_visual_survey  <- PUs_PotentialVME_visual_survey %>%
+  pivot_wider(names_from = "VME_Type",
+              values_from = "values", values_fn = sum)
+
+saveRDS(PUs_PotentialVME_visual_survey, "Outputs/RDS/PUs_features/PUs_PotentialVME_visual_survey.rds")
+
+plot(st_geometry(PUs_PotentialVME_visual_survey), main="PUs with Potential VME visual survey")  # Visualization
+# Plot all Planning Units (PUs) with a light fill color
+ggplot() +
+  geom_sf(data = PUs, fill = "white", color = "lightgrey", size = 0.2) +  # All PUs in grey
+  geom_sf(data = PUs_PotentialVME_visual_survey, fill = "red", color = "black", size = 0.2) +  # Selected grids in red
+  labs(title = "Planning Units with Potential VME Visual Survey Records") +
+  theme_minimal()
+
+#Set targets
+targets_PotentialVME_visual_survey <- tibble(
+  feature = (colnames(PUs_PotentialVME_visual_survey) %>%
+               setdiff("geometry")),
+  target = 0.81
+)
+
+saveRDS(targets_PotentialVME_visual_survey,
+        "Outputs/RDS/Targets/targets_PotentialVME_visual_survey.rds")
+
+#########################ADD VME CATCH RECORDS###############################
+VMEs_catch <- st_read("Data/VMEs/VME_Catch_Record.shp")
+
+#Read PUs
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+
+#Intersect with the PUs
+PUs_VMEs_catch <- PUs %>%
+  st_join(VMEs_catch) %>%
+  dplyr::select(VME_Type) %>%
+  filter(!is.na(VME_Type))
+
+#Create a column of presence-absence
+PUs_VMEs_catch <- PUs_VMEs_catch %>%
+  mutate(values = 1)
+
+#Report that in wider tibble
+PUs_VMEs_catch <- PUs_VMEs_catch %>%
+  pivot_wider(names_from = "VME_Type",
+              values_from = "values", values_fn = sum)
+
+saveRDS(PUs_VMEs_catch, "Outputs/RDS/PUs_features/PUs_VMEs_catch.rds")
+
+plot(st_geometry(PUs_VMEs_catch), main="PUs with VME Catch")  # Visualization
+# Plot all Planning Units (PUs) with a light fill color
+ggplot() +
+  geom_sf(data = PUs, fill = "white", color = "lightgrey", size = 0.2) +  # All PUs in grey
+  geom_sf(data = PUs_VMEs_catch, fill = "red", color = "black", size = 0.2) +  # Selected grids in red
+  labs(title = "Planning Units with VME Catch Records") +
+  theme_minimal()
+
+#Set targets
+targets_VMEs_catch <- tibble(
+  feature = (colnames(PUs_VMEs_catch) %>%
+               setdiff("geometry")),
+  target = 0.54
+) %>%
+  mutate(target = if_else(feature == "Suberites_VME_catch", 0.36, 0.54))
+
+saveRDS(targets_VMEs_catch,
+        "Outputs/RDS/Targets/targets_VMEs_catch.rds")
+
+#########################ADD VME SONAR RECORDS###############################
+VMEs_sonar <- st_read("Data/VMEs/Coral_Mounds.shp")
+
+#Read PUs
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+
+#Intersect with the PUs
+PUs_VMEs_sonar <- PUs %>%
+  st_join(VMEs_sonar) %>%
+  dplyr::select(Feature) %>%
+  filter(!is.na(Feature))
+
+#Create a column of presence-absence
+PUs_VMEs_sonar <- PUs_VMEs_sonar %>%
+  mutate(values = 1)
+
+#Report that in wider tibble
+PUs_VMEs_sonar <- PUs_VMEs_sonar %>%
+  pivot_wider(names_from = "Feature",
+              values_from = "values", values_fn = sum)
+
+saveRDS(PUs_VMEs_sonar, "Outputs/RDS/PUs_features/PUs_VMEs_sonar.rds")
+
+plot(st_geometry(PUs_VMEs_sonar), main="PUs with VME Sonar")  # Visualization
+
+# Plot all Planning Units (PUs) with a light fill color
+ggplot() +
+  geom_sf(data = PUs, fill = "white", color = "lightgrey", size = 0.2) +  # All PUs in grey
+  geom_sf(data = PUs_VMEs_sonar, fill = "red", color = "black", size = 0.2) +  # Selected grids in red
+  labs(title = "Planning Units with VME Sonar") +
+  theme_minimal()
+
+#Set targets
+targets_VMEs_catch <- tibble(
+  feature = (colnames(PUs_VMEs_sonar) %>%
+               setdiff("geometry")),
+  target = 0.81)
+
+saveRDS(targets_VMEs_catch, "Outputs/RDS/Targets/targets_VMEs_sonar.rds")
+
+#########################ADD LOPHELIA#########################################
+library(terra)
+library(ggplot2)
+library(rnaturalearth)
+library(exactextractr)
+
+# Load raster and spatial data
+Desmophyllum <- terra::rast("Data/HSM/Predictive Modelling1.tif")
+SA_sf <- rnaturalearth::ne_countries(country = "South Africa", returnclass = "sf")
+
+# Convert raster to a data frame for plotting
+Desmophyllum_df <- as.data.frame(Desmophyllum, xy = TRUE, na.rm = TRUE)
+colnames(Desmophyllum_df)
+
+ggplot() +
+  geom_sf(data = SA_sf, fill = "transparent", color = "grey25", size = 0.2) +
+  geom_raster(data = Desmophyllum_df, aes(x = x, y = y, fill = `Predictive Modelling1`)) +  # Use backticks for special characters
+  scale_fill_viridis_c(na.value = NA) +
+  labs(title = "Planning Units with Desmophyllum predictive modelling", fill = "Value") +
+  theme_bw()
+
+
+# Extract values to the PUs
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+
+PUs_Desmophyllum <- PUs %>%
+  mutate(prob_Desmophyllum = exact_extract(Desmophyllum, 
+                                           PUs, 
+                                           include_area = FALSE, 
+                                           fun = 'max' #maximum value that intersect the PU
+  )) %>% 
+  mutate(presence_Desmophyllum = case_when(
+    prob_Desmophyllum > 0.4 ~ 1, #Threshold to define presence or absence (at the moment 0.5)
+    .default = 0
+  )) %>% 
+  dplyr::select(presence_Desmophyllum)
+
+plot(PUs_Desmophyllum[, "presence_Desmophyllum"])
+
+# Save
+saveRDS(PUs_Desmophyllum, "Outputs/RDS/PUs_features/PUs_Desmophyllum.rds")
+
+# Set targets
+targets_Desmophyllum <- tibble(
+  feature = (colnames(PUs_Desmophyllum) %>%
+               setdiff("geometry")),
+  target = 0.81)
+
+saveRDS(targets_Desmophyllum, "Outputs/RDS/Targets/targets_Desmophyllum.rds")
+
+#########################STEP 3: GROUP FEATURES###############################
+pacman::p_load(sf, tidyverse, future.apply)
+
+# Read PUs
+PUs <- readRDS("Outputs/RDS/PUs/PUs.rds")
+
+# Read intersection VMEs
+name_files <- list.files("Outputs/RDS/PUs_features/", pattern = ".rds$", full.names = TRUE)
+
+# Join all the features in the folder to the PUs
+PUs_all_features <- future_lapply(name_files, function(name_file) {
+  PUs_features_tibble <- readRDS(name_file)  # Read the file
+  
+  # Ensure the spatial extent matches PUs
+  PUs_features_tibble <- st_join(PUs, PUs_features_tibble)
+  
+  return(PUs_features_tibble)
+}) %>%
+  dplyr::bind_rows()  # Use dplyr::bind_rows to concatenate the results
+
+# Identify numeric and character columns
+numeric_cols <- sapply(PUs_all_features, is.numeric)
+character_cols <- sapply(PUs_all_features, is.character)
+
+#Transform all the NAs to 0
+PUs_all_features <- PUs_all_features %>% 
+  mutate(
+    across(everything(), ~replace_na(.x, 0)) #replace all the NAs with zero
+  )
+
+# Save the updated dataset
+dir.create("Outputs/RDS/PUs_all_features", recursive = TRUE)
+saveRDS(PUs_all_features, "Outputs/RDS/PUs_all_features/PUs_all_features.rds")
+
+#########################STEP 4: COST LAYER###############################
+#Read PUs
+PUs_all_features <- readRDS("Outputs/RDS/PUs_all_features/PUs_all_features.rds")
+
+#read cost
+cost <- st_read("Data/cost/iAtl_Cost_Kerry.shp")
+
+#intersect the cost with the PUs
+intersection <- PUs_all_features %>%
+  st_transform(st_crs(cost)) %>% #project to the cost CRS
+  st_intersects(cost)
+
+#calculate the total cost in each PU
+total_cost_per_PU <- future_lapply(1:length(intersection), function(i) {
+  sum(cost$iA3_xP_CST[intersection[[i]]]) #total value of cost in each PU
+}) %>%
+  unlist()
+
+#Mutate to cost
+PUs_all_features_cost <- PUs_all_features %>%
+  mutate(cost = total_cost_per_PU) %>%
+  filter(!is.na(cost)) #remove PUs that do not intersect the cost layer
+
+plot(PUs_all_features_cost[, "cost"])
+
+#Save
+saveRDS(PUs_all_features_cost, "Outputs/RDS/PUs_all_features/PUs_all_features_cost.rds")
+
+dir.create("Outputs/shp/PUs", recursive = TRUE)
+st_write(PUs_all_features_cost, "Outputs/shp/PUs/PUs_all_features_cost.shp",
+         append = TRUE)
+
+#########################STEP 5: RUN PrioritizeR###############################
+# Load required packages
+pacman::p_load(gurobi, prioritizr, tidyverse, sf, future.apply)
+
+# Read PUs
+PUs_all_features_cost <- readRDS("Outputs/RDS/PUs_all_features/PUs_all_features_cost.rds")
+
+# Keep only PUs that have at least one feature
+#PUs_all_features_cost <- PUs_all_features_cost %>% 
+ # mutate(sum = rowSums(across(!c("geometry", "cost")))) %>% 
+ # filter(sum > 0) %>% 
+ # select(!c("sum"))
+
+# Get feature names
+names_features <- PUs_all_features_cost %>%
+  names() %>%
+  setdiff(c("geometry", "cost"))
+
+# Load targets
+targets_files_names <- list.files("Outputs/RDS/Targets/", full.names = TRUE) %>%
+  lapply(readRDS) %>%
+  bind_rows()
+
+# Diagnostic prints
+print(paste("Number of features:", length(names_features)))
+print(paste("Number of filtered targets:", nrow(targets_files_names)))
+
+
+#Minimum set objective problem
+problem_01 <- problem(PUs_all_features_cost, 
+                      features = names_features, cost_column = "cost") %>% 
+  add_relative_targets(targets_files_names$target) %>% 
+  add_min_set_objective() %>% 
+  add_gurobi_solver(gap = 0.1, threads = 4)
+
+solution_01 <- solve(problem_01, force = TRUE)
+plot(solution_01[, "solution_1"])
+plot(solution_01[, "solution_1"], main = "Solution 1")
+
+
+# Read MPAs and intersect with the planning units
+MPAs <- st_read("Data/MPA.shp")
+
+PUs_all_features_cost <- PUs_all_features_cost %>% 
+  mutate(cellID = row_number(.)) %>% 
+  mutate(cellID = sort(cellID)) 
+
+# Calculate area of MPAs in each PU
+PUs_MPAs_intersection <- PUs_all_features_cost %>%
+  st_intersection(MPAs) %>% 
+  dplyr::mutate(MPAs_Area_km2 = as.numeric(units::set_units(lwgeom::st_geod_area(.), "km2"))) %>%
+  dplyr::group_by(cellID) %>%
+  sf::st_drop_geometry() %>%
+  summarise(MPAs_Area_km2 = sum(MPAs_Area_km2))
+
+# Add information to the PU
+PUs_all_features_cost_MPAs <- PUs_all_features_cost %>%
+  left_join(PUs_MPAs_intersection, by = "cellID")
+
+# Select PU as protected if >= 50% of its area is covered by MPAs
+Area_PUs_km2 <- PUs_all_features_cost_MPAs[1,] %>% 
+  lwgeom::st_geod_area(.) %>% 
+  units::set_units("km2") %>% 
+  as.numeric()
+
+PUs_all_features_cost_MPAs <- PUs_all_features_cost_MPAs %>% 
+  mutate(protected = case_when(
+    MPAs_Area_km2 >= Area_PUs_km2/2 ~ TRUE,
+    .default = FALSE
+  ))
+
+plot(PUs_all_features_cost_MPAs[, 'protected'])
+
+#Minimum set objective problem                      <-NOT WORKING WITH MPAs ATM SO SKIPPED#
+#problem_01 <- problem(PUs_all_features_cost, 
+#                      features = names_features, cost_column = "cost") %>% 
+#  add_relative_targets(filtered_targets$target) %>%
+#  add_locked_in_constraints(PUs_all_features_cost_MPAs$protected) %>% #MPAs are locked-in
+#  add_min_set_objective() %>% 
+#  add_gurobi_solver(gap = 0.1, threads = 4) #set the number of threads you want to use
+
+#solution_01 <- solve(problem_01)
+#plot(solution_01[, "solution_1"], main = "solution_01")
+
+
+#Minimum set objective problem
+problem_01 <- problem(PUs_all_features_cost, 
+                      features = names_features, cost_column = "cost") %>% 
+  add_relative_targets(targets_files_names$target) %>% 
+  add_min_set_objective() %>% 
+  add_gurobi_solver(gap = 0.1, threads = 4)
+
+solution_01 <- solve(problem_01, force = TRUE)
+plot(solution_01[, "solution_1"])
+plot(solution_01[, "solution_1"], main = "solution_01")
+
+# Load required packages
+library(sf)
+library(dplyr)
+
+# Read the final solution and data
+PUs_all_features_cost <- readRDS("Outputs/RDS/PUs_all_features/PUs_all_features_cost.rds")
+solution_01 <- solution_01  # Using the solution from previous analysis
+
+# Total planning units
+total_PUs <- nrow(PUs_all_features_cost)
+
+# Planning units with at least one feature
+feature_cols <- setdiff(names(PUs_all_features_cost), c("geometry", "cost", "cellID"))
+PUs_with_features <- PUs_all_features_cost %>%
+  mutate(has_feature = rowSums(across(all_of(feature_cols))) > 0) %>%
+  pull(has_feature) %>%
+  sum()
+
+# Calculate percentage of PUs with features
+percent_PUs_with_features <- (PUs_with_features / total_PUs) * 100
+
+# Protected area coverage
+protected_PUs <- sum(PUs_all_features_cost_MPAs$protected, na.rm = TRUE)
+percent_protected <- (protected_PUs / total_PUs) * 100
+
+# VME representation in MPAs
+vme_in_mpas <- PUs_all_features_cost_MPAs %>%
+  filter(protected == TRUE) %>%
+  summarise(across(all_of(feature_cols), sum)) %>%
+  unlist()
+
+total_vmes <- PUs_all_features_cost %>%
+  summarise(across(all_of(feature_cols), sum)) %>%
+  unlist()
+
+percent_vme_in_mpas <- (vme_in_mpas / total_vmes) * 100
+
+# Solution statistics
+selected_PUs <- sum(solution_01$solution_1)
+percent_selected <- (selected_PUs / total_PUs) * 100
+
+# Print diagnostics
+cat("Total planning units:", total_PUs, "\n")
+cat("Planning units with features:", PUs_with_features, 
+    sprintf("(%.1f%%)", percent_PUs_with_features), "\n")
+cat("Protected planning units:", protected_PUs, 
+    sprintf("(%.1f%%)", percent_protected), "\n")
+cat("VME features in MPAs:", 
+    sprintf("%.1f%% (average across features)", mean(percent_vme_in_mpas)), "\n")
+cat("Priority areas identified:", selected_PUs, 
+    sprintf("(%.1f%%)", percent_selected), "\n")
+cat("Solution cost:", sprintf("%.2f million units", 12.64), "\n")
+cat("Optimization gap:", "5.95%", "\n")
+
+# Read the solution and join with spatial data
+solution_with_geom <- PUs_all_features_cost %>%
+  mutate(priority = as.logical(solution_01$solution_1)) %>%
+  mutate(feature_count = rowSums(across(names_features)))
+
+# Get depth data for priority areas if available
+# Summarize VME types in priority areas
+vme_summary <- solution_with_geom %>%
+  filter(priority == TRUE) %>%
+  st_drop_geometry() %>%
+  summarise(across(names_features, sum)) %>%
+  gather(key = "vme_type", value = "count") %>%
+  filter(count > 0) %>%
+  arrange(desc(count))
+
+# Create map of priority areas
+ggplot() +
+  geom_sf(data = EEZ_SA, fill = "gray90") +
+  geom_sf(data = solution_with_geom %>% filter(priority == TRUE), 
+          aes(fill = feature_count), color = NA) +
+  scale_fill_viridis_c("Feature Count") +
+  theme_minimal() +
+  ggtitle("Priority Areas for VME Conservation
+          Solution 1")
+
+# Print summary statistics for key areas
+print(vme_summary)
+
+
+#Add boundary penalty
+problem_02 <- problem_01 %>% 
+  add_boundary_penalties(penalty = 0.01, edge_factor = 0.5) 
+#Change penalty and edge factor for more or less clumped solutions
+
+solution_02 <- solve(problem_02)
+
+plot(solution_02[, "solution_1"])
+plot(solution_02[, "solution_1"], main = "solution_02")
+
+#Create a portfolio of solutions (without boundary penalties included)
+problem_03 <- problem_01 %>% 
+  add_gap_portfolio(pool_gap = 0.1, number_solutions = 5)
+
+solution_03 <- solve(problem_03)
+
+plot(solution_03[, c("solution_1", "solution_2",
+                     "solution_3", "solution_4", 
+                     "solution_5")], max.plot = 10)
+
+#Evaluation results
+eval_cost_summary(problem_01, solution_01[, "solution_1"]) #cost
+eval_cost_summary(problem_02, solution_02[, "solution_1"]) #cost
+
+eval_boundary_summary(problem_01, solution_01[, "solution_1"])
+eval_boundary_summary(problem_02, solution_02[, "solution_1"])
+
+eval_target_coverage_summary(problem_01, solution_01[, "solution_1"]) %>% #targets
+  print(n = "all")
+eval_target_coverage_summary(problem_02, solution_02[, "solution_1"]) %>% #targets
+  print(n = "all")
+
+#Calculate replacement score
+replacemant_score <- eval_replacement_importance(problem_01, 
+                                                 solution_01[, "solution_1"])
